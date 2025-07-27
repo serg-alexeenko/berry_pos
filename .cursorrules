@@ -1,83 +1,335 @@
-Ти мій помічник у розробці програмного забезпечення. Твоє основне завдання — не лише писати якісний код, а й ретельно документувати весь процес розробки, дозволяючи мені відстежувати прогрес та контролювати результати на кожному етапі.
+# Berry POS - Правила розробки
 
-## Документування процесу
+## Загальні принципи
 
-1. Документуй кожен значний крок у розробці у наступних файлах:
-    - /docs/changelog.md — хронологічний журнал усіх змін
-    - /docs/tasktracker.md — статус виконання задач з описом
-2. Формат запису в changelog.md:
-    
-    `markdown`
-    
-    ## [YYYY-MM-DD] - Короткий опис змін
-    
-    ### Додано
-    
-    - Опис нових функцій
-    
-    ### Змінено
-    
-    - Опис модифікацій
-    
-    ### Виправлено
-    
-    - Опис виправлень
-3. Формат запису в tasktracker.md:
-    
-    `markdown`
-    
-    ## Задача: [Назва задачі]
-    
-    - **Статус**: [Не розпочата/У процесі/Завершена]
-    - **Опис**: [Детальний опис]
-    - **Кроки виконання**:
-        - [x]  Завершений крок
-        - [ ]  Поточний крок
-        - [ ]  Запланований крок
-    - **Залежності**: [Зв’язки з іншими задачами]
+### Архітектурні принципи
+- Дотримуватися SOLID принципів
+- Використовувати мікросервісну архітектуру
+- Забезпечувати масштабованість та гнучкість
+- Пріоритет безпеки та продуктивності
 
-## Процес розробки
+### Кодування
+- Використовувати TypeScript для типізації
+- Дотримуватися ESLint + Prettier
+- Писати тести для критичного функціоналу
+- Документувати API та ключові функції
 
-1. Перед початком кожного нового кроку запитуй моє підтвердження.
-2. Після кожного кроку надавай коротке резюме змін (не більше 5 пунктів).
-3. При виникненні технічних проблем або неоднозначностей пропонуй 2–3 альтернативні підходи.
-4. Завжди зберігай контекст поточної задачі та загальну мету проєкту.
-5. Періодично нагадуй про поточний статус задачі та залишені кроки.
-6. Дотримуйся архітектурних рішень та стандартів, описаних у Project.md.
-7. Дотримуйся принципів SOLID, KISS, DRY.
-8. Проводь code review для всіх змін.
-9. Використовуй єдиний стиль кодування (лінтери, pre-commit hooks)
-10. Не залишай невикористаний код і коментарі.
+### Структура проєкту
+```
+berry_pos/
+├── docs/                    # Документація
+├── backend/                 # Backend сервіси
+│   ├── auth-service/       # Сервіс аутентифікації
+│   ├── pos-service/        # POS сервіс
+│   ├── inventory-service/  # Сервіс запасів
+│   └── analytics-service/  # Сервіс аналітики
+├── frontend/               # Frontend додатки
+│   ├── admin-panel/        # Адміністративна панель
+│   ├── pos-interface/      # POS інтерфейс
+│   └── mobile-app/         # Мобільний додаток
+├── shared/                 # Спільні ресурси
+│   ├── types/             # TypeScript типи
+│   ├── utils/             # Утиліти
+│   └── constants/         # Константи
+└── infrastructure/        # Інфраструктура
+    ├── docker/            # Docker конфігурації
+    ├── k8s/               # Kubernetes манифести
+    └── terraform/         # Terraform конфігурації
+```
 
-## Документування коду та структури
+## Технологічний стек
 
-1. При створенні нового файлу додавай на початку:
+### Backend
+- **Runtime**: Node.js 18+
+- **Framework**: Express.js / Fastify
+- **Database**: PostgreSQL 15+
+- **Cache**: Redis 7+
+- **ORM**: Prisma
+- **Validation**: Joi
+- **Testing**: Jest + Supertest
+
+### Frontend
+- **Framework**: React 18+ з TypeScript
+- **State Management**: Redux Toolkit
+- **UI Library**: Material-UI / Mantine
+- **Build Tool**: Vite
+- **Testing**: Jest + React Testing Library
+
+### Mobile
+- **Framework**: React Native
+- **Navigation**: React Navigation
+- **State Management**: Redux Toolkit
+- **Testing**: Jest + Detox
+
+### Infrastructure
+- **Containerization**: Docker
+- **Orchestration**: Kubernetes
+- **CI/CD**: GitHub Actions
+- **Monitoring**: Prometheus + Grafana
+- **Logging**: ELK Stack
+
+## Стандарти кодування
+
+### TypeScript
+```typescript
+// Використовувати строгу типізацію
+interface User {
+  id: string;
+  email: string;
+  role: UserRole;
+  createdAt: Date;
+}
+
+// Використовувати enum для констант
+enum UserRole {
+  ADMIN = 'admin',
+  MANAGER = 'manager',
+  CASHIER = 'cashier'
+}
+
+// Використовувати generics для утиліт
+function createApiResponse<T>(data: T, success: boolean = true): ApiResponse<T> {
+  return { data, success, timestamp: new Date() };
+}
+```
+
+### API Design
+```typescript
+// RESTful endpoints
+GET    /api/v1/users          // Отримати список користувачів
+POST   /api/v1/users          // Створити користувача
+GET    /api/v1/users/:id      // Отримати користувача
+PUT    /api/v1/users/:id      // Оновити користувача
+DELETE /api/v1/users/:id      // Видалити користувача
+
+// GraphQL для складних запитів
+type Query {
+  users(filter: UserFilter): [User!]!
+  user(id: ID!): User
+}
+```
+
+### Error Handling
+```typescript
+// Централізована обробка помилок
+class AppError extends Error {
+  constructor(
+    public statusCode: number,
+    public message: string,
+    public isOperational: boolean = true
+  ) {
+    super(message);
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+// Middleware для обробки помилок
+app.use((error: AppError, req: Request, res: Response, next: NextFunction) => {
+  const statusCode = error.statusCode || 500;
+  const message = error.message || 'Internal Server Error';
+  
+  res.status(statusCode).json({
+    success: false,
+    error: message,
+    ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+  });
+});
+```
+
+## Безпека
+
+### Аутентифікація
+- JWT токени з коротким терміном дії
+- Refresh tokens для оновлення
+- Rate limiting для API endpoints
+- CORS налаштування
+
+### Валідація
+```typescript
+// Валідація вхідних даних
+const userSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().min(8).required(),
+  role: Joi.string().valid(...Object.values(UserRole)).required()
+});
+
+// Middleware для валідації
+const validate = (schema: Joi.Schema) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const { error } = schema.validate(req.body);
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        error: error.details[0].message
+      });
+    }
+    next();
+  };
+};
+```
+
+### Шифрування
+- AES-256 для чутливих даних
+- bcrypt для хешування паролів
+- HTTPS для всіх з'єднань
+- Secure headers
+
+## Тестування
+
+### Unit Tests
+```typescript
+// Приклад unit тесту
+describe('UserService', () => {
+  it('should create user with valid data', async () => {
+    const userData = {
+      email: 'test@example.com',
+      password: 'password123',
+      role: UserRole.CASHIER
+    };
     
-    /**
+    const user = await userService.createUser(userData);
     
-    - @file: [назва файлу]
-    - @description: [короткий опис]
-    - @dependencies: [пов’язані компоненти/файли]
-    - @created: [дата]
-        
-        */
-        
-2. Після реалізації нового функціоналу актуалізуй
-    
-    `/docs/project.md`
-    
-    , включаючи:
-    
-    - Оновлену архітектуру проєкту
-    - Опис нових компонентів та їх взаємодій
-    - За потреби — діаграми та схеми у форматі Mermaid
-3. Підтримуй актуальну документацію API та інтерфейсів.
+    expect(user.email).toBe(userData.email);
+    expect(user.role).toBe(userData.role);
+    expect(user.password).not.toBe(userData.password); // Хешований
+  });
+});
+```
 
-## Комунікація
+### Integration Tests
+```typescript
+// Приклад integration тесту
+describe('User API', () => {
+  it('should create user via API', async () => {
+    const response = await request(app)
+      .post('/api/v1/users')
+      .send({
+        email: 'test@example.com',
+        password: 'password123',
+        role: UserRole.CASHIER
+      });
+    
+    expect(response.status).toBe(201);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.email).toBe('test@example.com');
+  });
+});
+```
 
-1. Якщо ти не впевнений у вимогах або напрямку розробки — став конкретні запитання.
-2. При пропозиції кількох варіантів реалізації чітко пояснюй переваги та недоліки кожного.
-3. Якщо задача здається занадто об’ємною — запропонуй розбити її на підзадачі.
-4. Наприкінці кожної сесії надавай короткий звіт про досягнутий прогрес і плани на наступну сесію.
+## Документація
 
-При будь-яких змінах у проєкті спочатку актуалізуй документацію, а вже потім переходь до наступного кроку розробки. Це дозволить уникнути втрати контексту та забезпечить більш послідовний і контрольований процес розробки.
+### API Documentation
+- Swagger/OpenAPI для REST endpoints
+- GraphQL Playground для GraphQL
+- JSDoc для функцій та класів
+- README для кожного сервісу
+
+### Code Comments
+```typescript
+/**
+ * Створює нового користувача в системі
+ * @param userData - Дані користувача для створення
+ * @param options - Додаткові опції (хешування паролю, валідація)
+ * @returns Promise<User> - Створений користувач
+ * @throws {AppError} - Якщо email вже існує або дані невалідні
+ */
+async function createUser(
+  userData: CreateUserDto,
+  options: CreateUserOptions = {}
+): Promise<User> {
+  // Реалізація
+}
+```
+
+## Git Workflow
+
+### Branching Strategy
+- `main` - продакшн код
+- `develop` - розробка
+- `feature/*` - нові функції
+- `hotfix/*` - критичні виправлення
+- `release/*` - підготовка релізів
+
+### Commit Messages
+```
+feat: додати систему аутентифікації
+fix: виправити помилку валідації email
+docs: оновити API документацію
+test: додати тести для UserService
+refactor: рефакторинг структури бази даних
+```
+
+## Performance
+
+### Оптимізація
+- Кешування з Redis
+- Database indexing
+- Lazy loading для компонентів
+- Code splitting для бандлів
+- CDN для статичних ресурсів
+
+### Monitoring
+- Response time метрики
+- Error rate моніторинг
+- Database performance
+- Memory usage
+- CPU utilization
+
+## Deployment
+
+### Environments
+- `development` - локальна розробка
+- `staging` - тестування
+- `production` - продакшн
+
+### CI/CD Pipeline
+1. Code linting та тестування
+2. Build артефактів
+3. Security scanning
+4. Deployment в staging
+5. Automated testing
+6. Deployment в production
+
+## Команди
+
+### Розробка
+```bash
+# Backend
+npm run dev          # Запуск в режимі розробки
+npm run build        # Збірка
+npm run test         # Запуск тестів
+npm run lint         # Лінтінг
+
+# Frontend
+npm run dev          # Запуск dev сервера
+npm run build        # Збірка для продакшену
+npm run test         # Запуск тестів
+npm run preview      # Прев'ю збірки
+```
+
+### Docker
+```bash
+docker-compose up -d    # Запуск всіх сервісів
+docker-compose down     # Зупинка сервісів
+docker-compose logs     # Перегляд логів
+```
+
+### Kubernetes
+```bash
+kubectl apply -f k8s/   # Розгортання
+kubectl get pods        # Статус подів
+kubectl logs -f         # Логи
+```
+
+## Важливі зауваження
+
+1. **Безпека перш за все** - всі зміни повинні проходити security review
+2. **Тестування обов'язкове** - новий функціонал повинен мати тести
+3. **Документація актуальна** - оновлювати документацію разом з кодом
+4. **Code review** - всі зміни повинні проходити review
+5. **Performance** - моніторити продуктивність на кожному етапі
+
+---
+
+**Останнє оновлення**: 2024-07-27  
+**Версія**: 1.0
