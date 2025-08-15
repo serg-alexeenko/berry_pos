@@ -1,333 +1,595 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { useOrders } from '@/hooks/useSupabase'
-import { Package, Plus, Search, Filter, Edit, Trash2, RefreshCw, CreditCard } from 'lucide-react'
-import DashboardLayout from '@/components/layout/DashboardLayout'
+import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { 
+  Search, 
+  Filter, 
+  Eye, 
+  Edit, 
+  Trash2, 
+  RefreshCw, 
+  Download,
+  Calendar,
+  User,
+  Receipt
+} from 'lucide-react'
+import { useSupabase } from '@/hooks/useSupabase'
+import { Order, OrderWithItems, Customer, OrderStatus } from '@/lib/supabase/types'
 
+const ORDER_STATUSES: OrderStatus[] = [
+  { value: 'new', label: 'Новий', color: 'bg-blue-500' },
+  { value: 'processing', label: 'В обробці', color: 'bg-yellow-500' },
+  { value: 'ready', label: 'Готово', color: 'bg-green-500' },
+  { value: 'completed', label: 'Завершено', color: 'bg-gray-500' },
+  { value: 'cancelled', label: 'Скасовано', color: 'bg-red-500' }
+]
 
 export default function OrderManagement() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterStatus, setFilterStatus] = useState<string>('all')
-  const { orders, loading, error, refetch } = useOrders()
+  const { supabase } = useSupabase()
+  
+  // Стан компонента
+  const [orders, setOrders] = useState<OrderWithItems[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [customerFilter, setCustomerFilter] = useState<string>('all')
+  const [dateFilter, setDateFilter] = useState<string>('all')
+  const [selectedOrder, setSelectedOrder] = useState<OrderWithItems | null>(null)
+  const [showOrderDetails, setShowOrderDetails] = useState(false)
+
+  // Завантаження даних
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true)
+      
+      // Завантаження замовлень з деталями (може не існувати ще)
+      let ordersData = []
+      try {
+        const { data: orders, error: ordersError } = await supabase
+          .from('orders')
+          .select(`
+            *,
+            order_items (
+              *,
+              product:products (
+                id,
+                name,
+                price,
+                image_url
+              )
+            ),
+            customer:customers (
+              id,
+              name,
+              phone,
+              email
+            )
+          `)
+          .order('created_at', { ascending: false })
+        
+        if (ordersError) {
+          console.warn('Таблиця orders ще не створена:', ordersError.message)
+        } else {
+          ordersData = orders || []
+        }
+      } catch (ordersError) {
+        console.warn('Помилка завантаження замовлень (таблиця може не існувати):', ordersError)
+        ordersData = []
+      }
+      
+      // Завантаження клієнтів (може не існувати ще)
+      let customersData = []
+      try {
+        const { data: customers, error: customersError } = await supabase
+          .from('customers')
+          .select('*')
+          .order('name')
+        
+        if (customersError) {
+          console.warn('Таблиця customers ще не створена:', customersError.message)
+        } else {
+          customersData = customers || []
+        }
+      } catch (customersError) {
+        console.warn('Помилка завантаження клієнтів (таблиця може не існувати):', customersError)
+        customersData = []
+      }
+      
+      setOrders(ordersData)
+      setCustomers(customersData)
+    } catch (error) {
+      console.error('Помилка завантаження даних:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   // Фільтрація замовлень
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
-      order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.notes?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredOrders = useMemo(() => {
+    let filtered = orders
     
-    const matchesStatus = filterStatus === 'all' || order.status === filterStatus
+    // Фільтр по статусу
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(order => order.status === statusFilter)
+    }
     
-    return matchesSearch && matchesStatus
-  })
-
-  // Отримання назви статусу
-  const getStatusName = (status: string) => {
-    const statusNames: Record<string, string> = {
-      'pending': 'Очікує',
-      'confirmed': 'Підтверджено',
-      'preparing': 'Готується',
-      'ready': 'Готово',
-      'completed': 'Завершено',
-      'cancelled': 'Скасовано'
+    // Фільтр по клієнту
+    if (customerFilter !== 'all') {
+      filtered = filtered.filter(order => order.customer_id === customerFilter)
     }
-    return statusNames[status] || status
+    
+    // Фільтр по даті
+    if (dateFilter !== 'all') {
+      const today = new Date()
+      const orderDate = new Date()
+      
+      switch (dateFilter) {
+        case 'today':
+          filtered = filtered.filter(order => {
+            orderDate.setTime(Date.parse(order.created_at))
+            return orderDate.toDateString() === today.toDateString()
+          })
+          break
+        case 'week':
+          const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+          filtered = filtered.filter(order => {
+            orderDate.setTime(Date.parse(order.created_at))
+            return orderDate >= weekAgo
+          })
+          break
+        case 'month':
+          const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
+          filtered = filtered.filter(order => {
+            orderDate.setTime(Date.parse(order.created_at))
+            return orderDate >= monthAgo
+          })
+          break
+      }
+    }
+    
+    // Фільтр по пошуку
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(order => 
+        order.order_number.toLowerCase().includes(query) ||
+        order.customer?.name.toLowerCase().includes(query) ||
+        order.customer?.phone?.includes(query)
+      )
+    }
+    
+    return filtered
+  }, [orders, statusFilter, customerFilter, dateFilter, searchQuery])
+
+  // Оновлення статусу замовлення
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: newStatus })
+        .eq('id', orderId)
+      
+      if (error) throw error
+      
+      // Оновлення локального стану
+      setOrders(orders.map(order => 
+        order.id === orderId 
+          ? { ...order, status: newStatus }
+          : order
+      ))
+      
+      // Оновлення вибраного замовлення
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder({ ...selectedOrder, status: newStatus })
+      }
+      
+    } catch (error) {
+      console.error('Помилка оновлення статусу:', error)
+      alert('Помилка оновлення статусу замовлення')
+    }
   }
 
-  // Отримання кольору статусу
-  const getStatusColor = (status: string) => {
-    const statusColors: Record<string, string> = {
-      'pending': 'bg-yellow-100 text-yellow-800',
-      'confirmed': 'bg-blue-100 text-blue-800',
-      'preparing': 'bg-orange-100 text-orange-800',
-      'ready': 'bg-green-100 text-green-800',
-      'completed': 'bg-gray-100 text-gray-800',
-      'cancelled': 'bg-red-100 text-red-800'
+  // Видалення замовлення
+  const deleteOrder = async (orderId: string) => {
+    if (!confirm('Ви впевнені, що хочете видалити це замовлення?')) return
+    
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId)
+      
+      if (error) throw error
+      
+      // Оновлення локального стану
+      setOrders(orders.filter(order => order.id !== orderId))
+      
+      // Закриття деталей якщо це було вибране замовлення
+      if (selectedOrder?.id === orderId) {
+        setShowOrderDetails(false)
+        setSelectedOrder(null)
+      }
+      
+    } catch (error) {
+      console.error('Помилка видалення замовлення:', error)
+      alert('Помилка видалення замовлення')
     }
-    return statusColors[status] || 'bg-gray-100 text-gray-800'
   }
 
-  // Отримання назви способу оплати
-  const getPaymentMethodName = (method?: string) => {
-    const methodNames: Record<string, string> = {
-      'cash': 'Готівка',
-      'card': 'Карта',
-      'online': 'Онлайн'
-    }
-    return methodNames[method || ''] || 'Не вказано'
+  // Експорт замовлень
+  const exportOrders = () => {
+    const csvContent = [
+      ['Номер замовлення', 'Дата', 'Клієнт', 'Статус', 'Сума', 'Товари'].join(','),
+      ...filteredOrders.map(order => [
+        order.order_number,
+        new Date(order.created_at).toLocaleDateString('uk-UA'),
+        order.customer?.name || 'Без клієнта',
+        ORDER_STATUSES.find(s => s.value === order.status)?.label || order.status,
+        order.final_amount.toFixed(2),
+        order.order_items.map(item => `${item.product.name} (${item.quantity})`).join('; ')
+      ].join(','))
+    ].join('\n')
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `замовлення_${new Date().toISOString().split('T')[0]}.csv`
+    link.click()
   }
 
-  if (loading) {
+  // Статистика
+  const statistics = useMemo(() => {
+    const total = orders.length
+    const totalAmount = orders.reduce((sum, order) => sum + order.final_amount, 0)
+    const byStatus = ORDER_STATUSES.map(status => ({
+      ...status,
+      count: orders.filter(order => order.status === status.value).length
+    }))
+    
+    return { total, totalAmount, byStatus }
+  }, [orders])
+
+  if (isLoading) {
     return (
-      <DashboardLayout>
-        <div className="p-8">
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Завантаження замовлень...</p>
-            </div>
-          </div>
-        </div>
-      </DashboardLayout>
-    )
-  }
-
-  if (error) {
-    return (
-      <DashboardLayout>
-        <div className="p-8">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-red-800 mb-2">Помилка завантаження</h3>
-            <p className="text-red-700">{error}</p>
-            <Button onClick={refetch} className="mt-4">
-              Спробувати знову
-            </Button>
-          </div>
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-96">
+        <div className="text-lg">Завантаження...</div>
+      </div>
     )
   }
 
   return (
-    <DashboardLayout>
-      <div className="p-8">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Управління замовленнями</h1>
-              <p className="text-gray-600 mt-2">Керуйте замовленнями та їх статусами</p>
-            </div>
-            <div className="mt-4 sm:mt-0 flex space-x-3">
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Нове замовлення
-              </Button>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Заголовок та статистика */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Управління замовленнями</h1>
+          <p className="text-gray-600">Перегляд та управління всіма замовленнями</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadData}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Оновити
+          </Button>
+          <Button variant="outline" onClick={exportOrders}>
+            <Download className="h-4 w-4 mr-2" />
+            Експорт
+          </Button>
+        </div>
+      </div>
 
-          {/* Filters */}
-          <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Статистика */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Receipt className="h-8 w-8 text-blue-500" />
               <div>
-                <Label htmlFor="search" className="text-sm font-medium text-gray-700">
-                  Пошук замовлень
-                </Label>
-                <div className="relative mt-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="search"
-                    placeholder="Номер замовлення або нотатки..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
+                <p className="text-sm text-gray-600">Всього замовлень</p>
+                <p className="text-2xl font-bold">{statistics.total}</p>
               </div>
-              
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 bg-green-100 rounded-lg flex items-center justify-center">
+                <span className="text-green-600 font-bold">₴</span>
+              </div>
               <div>
-                <Label htmlFor="status" className="text-sm font-medium text-gray-700">
-                  Статус
-                </Label>
-                <select
-                  id="status"
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                <p className="text-sm text-gray-600">Загальна сума</p>
+                <p className="text-2xl font-bold">{statistics.totalAmount.toFixed(2)} ₴</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <User className="h-8 w-8 text-purple-500" />
+              <div>
+                <p className="text-sm text-gray-600">Активних клієнтів</p>
+                <p className="text-2xl font-bold">
+                  {new Set(orders.map(o => o.customer_id).filter(Boolean)).size}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-8 w-8 text-orange-500" />
+              <div>
+                <p className="text-sm text-gray-600">Сьогодні</p>
+                <p className="text-2xl font-bold">
+                  {orders.filter(order => {
+                    const orderDate = new Date(order.created_at)
+                    const today = new Date()
+                    return orderDate.toDateString() === today.toDateString()
+                  }).length}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Фільтри */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-64">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Пошук по номеру замовлення, клієнту..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Статус" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Всі статуси</SelectItem>
+                {ORDER_STATUSES.map(status => (
+                  <SelectItem key={status.value} value={status.value}>
+                    {status.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <Select value={customerFilter} onValueChange={setCustomerFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Клієнт" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Всі клієнти</SelectItem>
+                {customers.map(customer => (
+                  <SelectItem key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <Select value={dateFilter} onValueChange={setDateFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Період" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Весь час</SelectItem>
+                <SelectItem value="today">Сьогодні</SelectItem>
+                <SelectItem value="week">Останній тиждень</SelectItem>
+                <SelectItem value="month">Останній місяць</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Список замовлень */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Замовлення ({filteredOrders.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {orders.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <Receipt className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                <h3 className="text-lg font-medium mb-2">Замовлення не знайдено</h3>
+                <p className="text-sm mb-4">Таблиці замовлень ще не створені в базі даних</p>
+                <p className="text-xs text-gray-400 mb-4">
+                  Для створення таблиць замовлень виконайте SQL скрипт pos-schema.sql
+                </p>
+                <Button 
+                  variant="outline" 
+                  onClick={() => window.location.href = '/pos'}
                 >
-                  <option value="all">Всі статуси</option>
-                  <option value="pending">Очікує</option>
-                  <option value="confirmed">Підтверджено</option>
-                  <option value="preparing">Готується</option>
-                  <option value="ready">Готово</option>
-                  <option value="completed">Завершено</option>
-                  <option value="cancelled">Скасовано</option>
-                </select>
-              </div>
-              
-              <div className="flex items-end">
-                <Button variant="outline" className="w-full">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Фільтри
+                  Перейти до POS системи
                 </Button>
               </div>
-            </div>
+            ) : filteredOrders.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <Search className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                <p>Замовлення не знайдено</p>
+                <p className="text-sm">Спробуйте змінити фільтри або пошуковий запит</p>
+              </div>
+            ) : (
+              filteredOrders.map(order => (
+                <div key={order.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-4 mb-2">
+                        <h3 className="font-semibold text-lg">{order.order_number}</h3>
+                        <Badge 
+                          className={ORDER_STATUSES.find(s => s.value === order.status)?.color || 'bg-gray-500'}
+                        >
+                          {ORDER_STATUSES.find(s => s.value === order.status)?.label || order.status}
+                        </Badge>
+                        <span className="text-sm text-gray-500">
+                          {new Date(order.created_at).toLocaleString('uk-UA')}
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center gap-6 text-sm text-gray-600">
+                        <span>
+                          <User className="h-4 w-4 inline mr-1" />
+                          {order.customer?.name || 'Без клієнта'}
+                        </span>
+                        <span>
+                          Товарів: {order.order_items.length}
+                        </span>
+                        <span className="font-semibold text-green-600">
+                          {order.final_amount.toFixed(2)} ₴
+                        </span>
+                      </div>
+                      
+                      <div className="mt-2 text-xs text-gray-500">
+                        {order.order_items.slice(0, 3).map(item => 
+                          `${item.product.name} (${item.quantity})`
+                        ).join(', ')}
+                        {order.order_items.length > 3 && '...'}
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedOrder(order)
+                          setShowOrderDetails(true)
+                        }}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      
+                      <Select 
+                        value={order.status} 
+                        onValueChange={(value) => updateOrderStatus(order.id, value)}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ORDER_STATUSES.map(status => (
+                            <SelectItem key={status.value} value={status.value}>
+                              {status.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => deleteOrder(order.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
+        </CardContent>
+      </Card>
 
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Package className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Всього замовлень</p>
-                  <p className="text-2xl font-bold text-gray-900">{orders.length}</p>
-                </div>
-              </div>
+      {/* Модальне вікно з деталями замовлення */}
+      {showOrderDetails && selectedOrder && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Деталі замовлення {selectedOrder.order_number}</h2>
+              <Button variant="ghost" onClick={() => setShowOrderDetails(false)}>
+                ✕
+              </Button>
             </div>
             
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <RefreshCw className="h-6 w-6 text-green-600" />
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Статус</p>
+                  <Badge className={ORDER_STATUSES.find(s => s.value === selectedOrder.status)?.color || 'bg-gray-500'}>
+                    {ORDER_STATUSES.find(s => s.value === selectedOrder.status)?.label || selectedOrder.status}
+                  </Badge>
                 </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Активних</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {orders.filter(o => ['pending', 'confirmed', 'preparing', 'ready'].includes(o.status)).length}
-                  </p>
+                <div>
+                  <p className="text-sm text-gray-600">Дата створення</p>
+                  <p>{new Date(selectedOrder.created_at).toLocaleString('uk-UA')}</p>
                 </div>
-              </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <CreditCard className="h-6 w-6 text-purple-600" />
+                <div>
+                  <p className="text-sm text-gray-600">Клієнт</p>
+                  <p>{selectedOrder.customer?.name || 'Без клієнта'}</p>
                 </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Загальна сума</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    ₴{orders.reduce((sum, o) => sum + o.total_amount, 0).toLocaleString()}
-                  </p>
+                <div>
+                  <p className="text-sm text-gray-600">Загальна сума</p>
+                  <p className="font-bold text-green-600">{selectedOrder.final_amount.toFixed(2)} ₴</p>
                 </div>
               </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Package className="h-6 w-6 text-orange-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Середній чек</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    ₴{orders.length > 0 
-                      ? Math.round(orders.reduce((sum, o) => sum + o.total_amount, 0) / orders.length)
-                      : 0
-                    }
-                  </p>
+              
+              <div>
+                <p className="text-sm text-gray-600 mb-2">Товари</p>
+                <div className="space-y-2">
+                  {selectedOrder.order_items.map(item => (
+                    <div key={item.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gray-200 rounded flex items-center justify-center">
+                          {item.product.image_url ? (
+                            <img 
+                              src={item.product.image_url} 
+                              alt={item.product.name}
+                              className="w-full h-full object-cover rounded"
+                            />
+                          ) : (
+                            <span>📦</span>
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium">{item.product.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {item.unit_price.toFixed(2)} ₴ × {item.quantity}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="font-semibold">{item.total_price.toFixed(2)} ₴</p>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-          </div>
-
-          {/* Orders List */}
-          <div className="bg-white rounded-lg shadow-sm border">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Список замовлень</h2>
-            </div>
-            <div className="p-6">
-              {filteredOrders.length === 0 ? (
-                <div className="text-center py-8">
-                  <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    {searchTerm || filterStatus !== 'all' ? 'Замовлення не знайдено' : 'Замовлення не знайдено'}
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    {searchTerm || filterStatus !== 'all' 
-                      ? 'Спробуйте змінити фільтри або створіть нове замовлення'
-                      : 'Створіть перше замовлення для початку роботи'
-                    }
-                  </p>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Нове замовлення
-                  </Button>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Замовлення
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Клієнт
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Статус
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Сума
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Оплата
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Дата
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Дії
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredOrders.map((order) => (
-                        <tr key={order.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div className="h-10 w-10 rounded-lg bg-gray-200 flex items-center justify-center mr-3">
-                                <Package className="h-5 w-5 text-gray-400" />
-                              </div>
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">{order.order_number}</div>
-                                <div className="text-sm text-gray-500">
-                                  ID: {order.id.slice(0, 8)}...
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {order.customer_id ? (
-                                <div>Клієнт #{order.customer_id.slice(0, 8)}...</div>
-                              ) : (
-                                <div className="text-gray-500">Без клієнта</div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                              {getStatusName(order.status)}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            ₴{order.total_amount.toFixed(2)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {getPaymentMethodName(order.payment_method)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {new Date(order.created_at).toLocaleDateString('uk-UA')}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <div className="flex space-x-2">
-                              <Button variant="ghost" size="sm">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              
+              {selectedOrder.notes && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Примітки</p>
+                  <p className="p-2 bg-gray-50 rounded">{selectedOrder.notes}</p>
                 </div>
               )}
             </div>
           </div>
         </div>
-      </div>
-    </DashboardLayout>
+      )}
+    </div>
   )
 }

@@ -7,321 +7,484 @@
 
 'use client'
 
-import { useState } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useCustomers } from '@/hooks/useSupabase'
-import { Users, Plus, Search, Filter, Edit, Trash2, RefreshCw, Star, MapPin, Phone } from 'lucide-react'
-import DashboardLayout from '@/components/layout/DashboardLayout'
+import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
+import { 
+  Search, 
+  Plus, 
+  Edit, 
+  Trash2, 
+  User, 
+  Phone, 
+  Mail, 
+  MapPin,
+  Star,
+  RefreshCw,
+  Download
+} from 'lucide-react'
+import { useSupabase } from '@/hooks/useSupabase'
+import { Customer, CustomerInsert, CustomerUpdate } from '@/lib/supabase/types'
 
 export default function CustomerManagement() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterActive, setFilterActive] = useState<string>('all')
-  const { customers, loading, error, refetch } = useCustomers()
-
-  // Фільтрація клієнтів
-  const filteredCustomers = customers.filter(customer => {
-    const matchesSearch = 
-      customer.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.phone?.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesActive = filterActive === 'all' || 
-      (filterActive === 'active' && customer.is_active) ||
-      (filterActive === 'inactive' && !customer.is_active)
-    
-    return matchesSearch && matchesActive
+  const { supabase } = useSupabase()
+  
+  // Стан компонента
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showForm, setShowForm] = useState(false)
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [formData, setFormData] = useState<CustomerInsert>({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+    loyalty_points: 0
   })
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="p-8">
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Завантаження клієнтів...</p>
-            </div>
-          </div>
-        </div>
-      </DashboardLayout>
-    )
+  // Завантаження даних
+  useEffect(() => {
+    loadCustomers()
+  }, [])
+
+  const loadCustomers = async () => {
+    try {
+      setIsLoading(true)
+      
+      try {
+        const { data, error } = await supabase
+          .from('customers')
+          .select('*')
+          .order('name')
+        
+        if (error) {
+          console.warn('Таблиця customers ще не створена:', error.message)
+          setCustomers([])
+          return
+        }
+        
+        setCustomers(data || [])
+      } catch (error) {
+        console.warn('Помилка завантаження клієнтів (таблиця може не існувати):', error)
+        setCustomers([])
+      }
+    } catch (error) {
+      console.error('Помилка завантаження клієнтів:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  if (error) {
+  // Фільтрація клієнтів
+  const filteredCustomers = useMemo(() => {
+    if (!searchQuery) return customers
+    
+    const query = searchQuery.toLowerCase()
+    return customers.filter(customer => 
+      customer.name.toLowerCase().includes(query) ||
+      customer.phone?.toLowerCase().includes(query) ||
+      customer.email?.toLowerCase().includes(query) ||
+      customer.address?.toLowerCase().includes(query)
+    )
+  }, [customers, searchQuery])
+
+  // Обробка форми
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    try {
+      if (editingCustomer) {
+        // Оновлення існуючого клієнта
+        const { error } = await supabase
+          .from('customers')
+          .update(formData)
+          .eq('id', editingCustomer.id)
+        
+        if (error) throw error
+        
+        // Оновлення локального стану
+        setCustomers(customers.map(customer => 
+          customer.id === editingCustomer.id 
+            ? { ...customer, ...formData }
+            : customer
+        ))
+      } else {
+        // Створення нового клієнта
+        const { data, error } = await supabase
+          .from('customers')
+          .insert(formData)
+          .select()
+          .single()
+        
+        if (error) throw error
+        
+        // Додавання до локального стану
+        setCustomers([...customers, data])
+      }
+      
+      // Очищення форми
+      resetForm()
+      
+    } catch (error) {
+      console.error('Помилка збереження клієнта:', error)
+      alert('Помилка збереження клієнта')
+    }
+  }
+
+  // Редагування клієнта
+  const handleEdit = (customer: Customer) => {
+    setEditingCustomer(customer)
+    setFormData({
+      name: customer.name,
+      phone: customer.phone || '',
+      email: customer.email || '',
+      address: customer.address || '',
+      loyalty_points: customer.loyalty_points
+    })
+    setShowForm(true)
+  }
+
+  // Видалення клієнта
+  const handleDelete = async (customerId: string) => {
+    if (!confirm('Ви впевнені, що хочете видалити цього клієнта?')) return
+    
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customerId)
+      
+      if (error) throw error
+      
+      // Видалення з локального стану
+      setCustomers(customers.filter(customer => customer.id !== customerId))
+      
+    } catch (error) {
+      console.error('Помилка видалення клієнта:', error)
+      alert('Помилка видалення клієнта')
+    }
+  }
+
+  // Скидання форми
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      phone: '',
+      email: '',
+      address: '',
+      loyalty_points: 0
+    })
+    setEditingCustomer(null)
+    setShowForm(false)
+  }
+
+  // Експорт клієнтів
+  const exportCustomers = () => {
+    const csvContent = [
+      ['Ім\'я', 'Телефон', 'Email', 'Адреса', 'Бонусні бали', 'Дата реєстрації'].join(','),
+      ...filteredCustomers.map(customer => [
+        customer.name,
+        customer.phone || '',
+        customer.email || '',
+        customer.address || '',
+        customer.loyalty_points.toString(),
+        new Date(customer.created_at).toLocaleDateString('uk-UA')
+      ].join(','))
+    ].join('\n')
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `клієнти_${new Date().toISOString().split('T')[0]}.csv`
+    link.click()
+  }
+
+  // Статистика
+  const statistics = useMemo(() => {
+    const total = customers.length
+    const withPhone = customers.filter(c => c.phone).length
+    const withEmail = customers.filter(c => c.email).length
+    const totalLoyaltyPoints = customers.reduce((sum, c) => sum + c.loyalty_points, 0)
+    
+    return { total, withPhone, withEmail, totalLoyaltyPoints }
+  }, [customers])
+
+  if (isLoading) {
     return (
-      <DashboardLayout>
-        <div className="p-8">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-red-800 mb-2">Помилка завантаження</h3>
-            <p className="text-red-700">{error}</p>
-            <Button onClick={refetch} className="mt-4">
-              Спробувати знову
-            </Button>
-          </div>
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center h-96">
+        <div className="text-lg">Завантаження...</div>
+      </div>
     )
   }
 
   return (
-    <DashboardLayout>
-      <div className="p-8">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Управління клієнтами</h1>
-              <p className="text-gray-600 mt-2">Керуйте базою клієнтів та програмою лояльності</p>
-            </div>
-            <div className="mt-4 sm:mt-0 flex space-x-3">
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Новий клієнт
-              </Button>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Заголовок та статистика */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Управління клієнтами</h1>
+          <p className="text-gray-600">База даних клієнтів та програма лояльності</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadCustomers}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Оновити
+          </Button>
+          <Button variant="outline" onClick={exportCustomers}>
+            <Download className="h-4 w-4 mr-2" />
+            Експорт
+          </Button>
+          <Button onClick={() => setShowForm(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Новий клієнт
+          </Button>
+        </div>
+      </div>
 
-          {/* Filters */}
-          <div className="bg-white p-6 rounded-lg shadow-sm border mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Статистика */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <User className="h-8 w-8 text-blue-500" />
               <div>
-                <Label htmlFor="search" className="text-sm font-medium text-gray-700">
-                  Пошук клієнтів
-                </Label>
-                <div className="relative mt-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <p className="text-sm text-gray-600">Всього клієнтів</p>
+                <p className="text-2xl font-bold">{statistics.total}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Phone className="h-8 w-8 text-green-500" />
+              <div>
+                <p className="text-sm text-gray-600">З телефоном</p>
+                <p className="text-2xl font-bold">{statistics.withPhone}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Mail className="h-8 w-8 text-purple-500" />
+              <div>
+                <p className="text-sm text-gray-600">З email</p>
+                <p className="text-2xl font-bold">{statistics.withEmail}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Star className="h-8 w-8 text-yellow-500" />
+              <div>
+                <p className="text-sm text-gray-600">Бонусних балів</p>
+                <p className="text-2xl font-bold">{statistics.totalLoyaltyPoints}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Пошук */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Пошук по імені, телефону, email або адресі..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Форма створення/редагування */}
+      {showForm && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {editingCustomer ? 'Редагування клієнта' : 'Новий клієнт'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="name">Ім'я *</Label>
                   <Input
-                    id="search"
-                    placeholder="Ім'я, прізвище, email або телефон..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="phone">Телефон</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="+380991234567"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="client@example.com"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="loyalty_points">Бонусні бали</Label>
+                  <Input
+                    id="loyalty_points"
+                    type="number"
+                    value={formData.loyalty_points}
+                    onChange={(e) => setFormData({ ...formData, loyalty_points: parseInt(e.target.value) || 0 })}
+                    min="0"
                   />
                 </div>
               </div>
               
               <div>
-                <Label htmlFor="status" className="text-sm font-medium text-gray-700">
-                  Статус
-                </Label>
-                <select
-                  id="status"
-                  value={filterActive}
-                  onChange={(e) => setFilterActive(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                >
-                  <option value="all">Всі клієнти</option>
-                  <option value="active">Активні</option>
-                  <option value="inactive">Неактивні</option>
-                </select>
+                <Label htmlFor="address">Адреса</Label>
+                <Textarea
+                  id="address"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  placeholder="Повна адреса клієнта"
+                  rows={3}
+                />
               </div>
               
-              <div className="flex items-end">
-                <Button variant="outline" className="w-full">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Фільтри
+              <div className="flex gap-2">
+                <Button type="submit">
+                  {editingCustomer ? 'Оновити' : 'Створити'}
+                </Button>
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Скасувати
                 </Button>
               </div>
-            </div>
-          </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Users className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Всього клієнтів</p>
-                  <p className="text-2xl font-bold text-gray-900">{customers.length}</p>
-                </div>
+      {/* Список клієнтів */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Клієнти ({filteredCustomers.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {customers.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <User className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                <h3 className="text-lg font-medium mb-2">Клієнти не знайдено</h3>
+                <p className="text-sm mb-4">Таблиця клієнтів ще не створена в базі даних</p>
+                <p className="text-xs text-gray-400 mb-4">
+                  Для створення таблиці клієнтів виконайте SQL скрипт pos-schema.sql
+                </p>
+                <Button 
+                  variant="outline" 
+                  onClick={() => window.location.href = '/pos'}
+                >
+                  Перейти до POS системи
+                </Button>
               </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <RefreshCw className="h-6 w-6 text-green-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Активних</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {customers.filter(c => c.is_active).length}
-                  </p>
-                </div>
+            ) : filteredCustomers.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <Search className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                <p>Клієнти не знайдено</p>
+                {searchQuery && (
+                  <p className="text-sm">Спробуйте змінити пошуковий запит</p>
+                )}
               </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <Star className="h-6 w-6 text-purple-600" />
+            ) : (
+              filteredCustomers.map(customer => (
+                <div key={customer.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-semibold text-lg">{customer.name}</h3>
+                        <Badge variant="secondary">
+                          {customer.loyalty_points} балів
+                        </Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                        {customer.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="h-4 w-4" />
+                            <span>{customer.phone}</span>
+                          </div>
+                        )}
+                        
+                        {customer.email && (
+                          <div className="flex items-center gap-2">
+                            <Mail className="h-4 w-4" />
+                            <span>{customer.email}</span>
+                          </div>
+                        )}
+                        
+                        {customer.address && (
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4" />
+                            <span className="truncate">{customer.address}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="mt-2 text-xs text-gray-500">
+                        Зареєстровано: {new Date(customer.created_at).toLocaleDateString('uk-UA')}
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEdit(customer)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDelete(customer.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Середні бали</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {customers.length > 0 
-                      ? Math.round(customers.reduce((sum, c) => sum + c.loyalty_points, 0) / customers.length)
-                      : 0
-                    }
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow-sm border">
-              <div className="flex items-center">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Users className="h-6 w-6 text-orange-600" />
-                </div>
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Нових цього місяця</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {customers.filter(c => {
-                      const created = new Date(c.created_at)
-                      const now = new Date()
-                      return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear()
-                    }).length}
-                  </p>
-                </div>
-              </div>
-            </div>
+              ))
+            )}
           </div>
-
-          {/* Customers List */}
-          <div className="bg-white rounded-lg shadow-sm border">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Список клієнтів</h2>
-            </div>
-            <div className="p-6">
-              {filteredCustomers.length === 0 ? (
-                <div className="text-center py-8">
-                  <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    {searchTerm || filterActive !== 'all' ? 'Клієнтів не знайдено' : 'Клієнтів не знайдено'}
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    {searchTerm || filterActive !== 'all' 
-                      ? 'Спробуйте змінити фільтри або створіть нового клієнта'
-                      : 'Створіть першого клієнта для початку роботи'
-                    }
-                  </p>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Новий клієнт
-                  </Button>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Клієнт
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Контакти
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Адреса
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Бали лояльності
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Статус
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Дата реєстрації
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Дії
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredCustomers.map((customer) => (
-                        <tr key={customer.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center mr-3">
-                                <span className="text-sm font-medium text-gray-600">
-                                  {customer.first_name.charAt(0)}{customer.last_name.charAt(0)}
-                                </span>
-                              </div>
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {customer.first_name} {customer.last_name}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  ID: {customer.id.slice(0, 8)}...
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="space-y-1">
-                              {customer.email && (
-                                <div className="text-sm text-gray-900">{customer.email}</div>
-                              )}
-                              {customer.phone && (
-                                <div className="flex items-center text-sm text-gray-600">
-                                  <Phone className="h-3 w-3 mr-1" />
-                                  {customer.phone}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center text-sm text-gray-600">
-                              <MapPin className="h-3 w-3 mr-1" />
-                              {customer.address || 'Не вказано'}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <Star className="h-4 w-4 text-yellow-500 mr-1" />
-                              <span className="text-sm font-medium text-gray-900">
-                                {customer.loyalty_points}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              customer.is_active 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {customer.is_active ? 'Активний' : 'Неактивний'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {new Date(customer.created_at).toLocaleDateString('uk-UA')}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <div className="flex space-x-2">
-                              <Button variant="ghost" size="sm">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </DashboardLayout>
+        </CardContent>
+      </Card>
+    </div>
   )
 }

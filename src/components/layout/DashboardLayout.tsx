@@ -12,6 +12,7 @@ import {
   Menu, 
   Package, 
   ShoppingCart, 
+  Receipt,
   Users, 
   BarChart3, 
   CreditCard, 
@@ -72,6 +73,12 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       description: 'Головна панель'
     },
     {
+      name: 'POS Система',
+      href: '/pos',
+      icon: ShoppingCart,
+      description: 'Швидке створення замовлень'
+    },
+    {
       name: 'Меню',
       href: '/menu',
       icon: Menu,
@@ -82,11 +89,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         { name: 'Продукти', href: '/menu/products', description: 'Управління продуктами' }
       ]
     },
-
     {
       name: 'Замовлення',
       href: '/orders',
-      icon: ShoppingCart,
+      icon: Receipt,
       description: 'Управління замовленнями'
     },
     {
@@ -99,19 +105,13 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       name: 'Аналітика',
       href: '/analytics',
       icon: BarChart3,
-      description: 'Звіти та статистика'
-    },
-    {
-      name: 'POS',
-      href: '/pos',
-      icon: CreditCard,
-      description: 'Точка продажу'
+      description: 'Аналітика та звіти'
     },
     {
       name: 'Налаштування',
       href: '/settings',
       icon: Settings,
-      description: 'Налаштування системи'
+      description: 'Налаштування бізнесу'
     }
   ]
 

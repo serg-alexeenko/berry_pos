@@ -5,8 +5,8 @@
  * @created: 2024-12-19
  */
 
-import POSInterface from '@/components/business/POSInterface'
 import DashboardLayout from '@/components/layout/DashboardLayout'
+import POSInterface from '@/components/business/POSInterface'
 
 export default function POSPage() {
   return (

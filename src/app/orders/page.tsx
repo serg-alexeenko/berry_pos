@@ -5,8 +5,13 @@
  * @created: 2024-12-19
  */
 
+import DashboardLayout from '@/components/layout/DashboardLayout'
 import OrderManagement from '@/components/business/OrderManagement'
 
 export default function OrdersPage() {
-  return <OrderManagement />
+  return (
+    <DashboardLayout>
+      <OrderManagement />
+    </DashboardLayout>
+  )
 }
