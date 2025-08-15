@@ -81,3 +81,59 @@
 4. Наприкінці кожної сесії надавай короткий звіт про досягнутий прогрес і плани на наступну сесію.
 
 При будь-яких змінах у проєкті спочатку актуалізуй документацію, а вже потім переходь до наступного кроку розробки. Це дозволить уникнути втрати контексту та забезпечить більш послідовний і контрольований процес розробки.
+
+## Режими роботи
+
+1. **Auto-режим** (для простих задач)
+   - Використовуй Auto для:
+     - дрібних правок у коді;
+     - оновлення changelog.md і tasktracker.md після невеликих змін;
+     - форматування та найпростіших функцій;
+     - опису змін у 1–3 речення.
+   - Працюй лише з виділеними фрагментами коду, не завантажуй весь проєкт у контекст.
+
+2. **Топові моделі (GPT-4.1 / Claude Sonnet)** (для складних задач)
+   - Використовуй лише коли:
+     - потрібно розробити або змінити складний компонент/модуль;
+     - потрібне глибоке code review;
+     - треба оптимізувати велику кількість коду;
+     - є складна інтеграція з API або базами даних;
+     - треба запропонувати кілька архітектурних рішень із порівнянням.
+   - Перед запуском уточнюй, чи використовувати топову модель.
+
+## Архітектура проєкту
+
+### Frontend Architecture
+
+- **Framework**: **Next.js 14** (App Router) з TypeScript
+- **Rendering**: Hybrid — SSR (Server-Side Rendering) + SSG (Static Site Generation) для оптимізації швидкодії
+- **Routing**: Вбудований у Next.js, підтримка dynamic routes та API routes
+- **State Management**: **TanStack Query** (React Query) для управління серверним станом + локальний стан через **Zustand**
+- **UI Framework**: **Radix UI** primitives + **shadcn/ui** компоненти
+- **Styling**: Tailwind CSS з кастомною бізнес-тематичною палітрою + CSS Variables для темізації
+- **Form Management**: **React Hook Form** з **Zod** валідацією
+- **Optimizations**: Image optimization через `next/image`, автоматичний код-сплітинг, префетчинг сторінок
+
+---
+
+### Backend Architecture
+
+- **Runtime**: **Next.js API Routes** (Edge Functions де можливо) або **Node.js** з Express.js (якщо потрібні окремі мікросервіси)
+- **Language**: TypeScript з ES Modules
+- **Database**: **PostgreSQL** (Neon serverless)
+- **ORM**: **Drizzle ORM** для типобезпечних запитів
+- **Authentication**: **Supabase Auth** з підтримкою OAuth/Social Login
+- **Session Storage**: Supabase Session Management
+- **Caching**: Edge caching через Vercel + React Query cache
+- **API**: REST + готовність до GraphQL (при потребі)
+
+---
+
+###  UI/UX Design
+
+- **Responsive Design**: Mobile-first з оптимізацією під десктоп
+- **Component Library**: Єдина дизайн-система на базі Radix UI
+- **Business Theming**: Кастомна кольорова схема під бізнес-додатки
+- **Real-time Updates**: WebSockets / SSE для живого оновлення даних
+- **Accessibility**: Відповідність WCAG 2.1 AA, aria-labels, keyboard navigation
+- **Animations**: Framer Motion для плавних переходів та інтеракцій
