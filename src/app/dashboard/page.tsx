@@ -7,434 +7,328 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth } from '@/components/providers/AuthProvider';
-import { useBusiness } from '@/hooks/useSupabase';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building, TrendingUp, DollarSign, ShoppingCart, Users, Calendar, Settings, Plus, ArrowRight } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
-import { format, subDays, subWeeks, subMonths, startOfDay, endOfDay } from 'date-fns';
-import { uk } from 'date-fns/locale';
-import { supabase } from '@/lib/supabase/client';
-import DashboardLayout from '@/components/layout/DashboardLayout';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  Users, 
+  ShoppingCart, 
+  Package, 
+  Receipt,
+  DollarSign,
+  Activity,
+  Calendar,
+  Clock,
+  Star,
+  ArrowUpRight,
+  ArrowDownRight
+} from "lucide-react";
+import Link from "next/link";
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const { business, loading, error } = useBusiness();
-  const router = useRouter();
-  const [showCreateBusiness, setShowCreateBusiness] = useState(false);
-  const [allBusinesses, setAllBusinesses] = useState<any[]>([]);
-  const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
-  const [period, setPeriod] = useState<'day' | 'week' | 'month'>('week');
-
-  // Додаємо діагностику
-  console.log('Dashboard render:', { user, business, loading, error });
-
-  // Функція для отримання всіх бізнесів користувача
-  const fetchAllBusinesses = async () => {
-    if (!user) return;
-    
-    try {
-      const { data, error: fetchError } = await supabase
-        .from('businesses')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (fetchError) {
-        console.error('Помилка отримання всіх бізнесів:', fetchError);
-        return;
-      }
-
-      if (data && data.length > 0) {
-        setAllBusinesses(data);
-        // Якщо немає вибраного бізнесу, вибираємо перший
-        if (!selectedBusinessId) {
-          setSelectedBusinessId(data[0].id);
-        }
-        console.log('Всі бізнеси користувача:', data);
-      }
-    } catch (err) {
-      console.error('Помилка при отриманні бізнесів:', err);
+  // Мокові дані для демонстрації
+  const stats = [
+    {
+      title: "Загальний дохід",
+      value: "₴45,231",
+      change: "+20.1%",
+      trend: "up",
+      icon: DollarSign,
+      description: "Порівняно з минулим місяцем"
+    },
+    {
+      title: "Замовлення",
+      value: "2,350",
+      change: "+180.1%",
+      trend: "up",
+      icon: ShoppingCart,
+      description: "Порівняно з минулим місяцем"
+    },
+    {
+      title: "Клієнти",
+      value: "1,234",
+      change: "+19%",
+      trend: "up",
+      icon: Users,
+      description: "Порівняно з минулим місяцем"
+    },
+    {
+      title: "Продукти",
+      value: "156",
+      change: "+12%",
+      trend: "up",
+      icon: Package,
+      description: "Порівняно з минулим місяцем"
     }
-  };
-
-  useEffect(() => {
-    console.log('Dashboard useEffect:', { business, loading });
-    if (!loading) {
-      if (!business) {
-        console.log('Показуємо форму створення бізнесу');
-        setShowCreateBusiness(true);
-      } else {
-        console.log('Бізнес знайдено, показуємо dashboard');
-        setShowCreateBusiness(false);
-        // Отримуємо всі бізнеси
-        fetchAllBusinesses();
-      }
-    }
-  }, [business, loading]);
-
-  // Отримуємо поточний вибраний бізнес
-  const currentBusiness = allBusinesses.find(b => b.id === selectedBusinessId) || business;
-
-  // Мокові дані для графіків (замінити на реальні дані з Supabase)
-  const getChartData = () => {
-    const now = new Date();
-    let data = [];
-    
-    switch (period) {
-      case 'day':
-        data = Array.from({ length: 24 }, (_, i) => ({
-          time: `${i}:00`,
-          sales: Math.floor(Math.random() * 1000) + 100,
-          orders: Math.floor(Math.random() * 20) + 5
-        }));
-        break;
-      case 'week':
-        data = Array.from({ length: 7 }, (_, i) => {
-          const date = subDays(now, 6 - i);
-          return {
-            date: format(date, 'EEE', { locale: uk }),
-            sales: Math.floor(Math.random() * 5000) + 500,
-            orders: Math.floor(Math.random() * 100) + 20
-          };
-        });
-        break;
-      case 'month':
-        data = Array.from({ length: 30 }, (_, i) => {
-          const date = subDays(now, 29 - i);
-          return {
-            date: format(date, 'dd', { locale: uk }),
-            sales: Math.floor(Math.random() * 2000) + 200,
-            orders: Math.floor(Math.random() * 50) + 10
-          };
-        });
-        break;
-    }
-    return data;
-  };
-
-  // Мокові дані для кругових діаграм
-  const categoryData = [
-    { name: 'Напої', value: 35, color: '#3B82F6' },
-    { name: 'Їжа', value: 45, color: '#10B981' },
-    { name: 'Десерти', value: 20, color: '#F59E0B' }
   ];
 
-  if (!user) {
-    console.log('Dashboard: користувач не авторизований');
-    return (
-      <DashboardLayout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-lg">Будь ласка, увійдіть в систему</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const recentOrders = [
+    {
+      id: "#1234",
+      customer: "Іван Петренко",
+      amount: "₴450",
+      status: "completed",
+      time: "2 хв тому"
+    },
+    {
+      id: "#1235",
+      customer: "Марія Коваленко",
+      amount: "₴320",
+      status: "preparing",
+      time: "15 хв тому"
+    },
+    {
+      id: "#1236",
+      customer: "Олександр Сидоренко",
+      amount: "₴780",
+      status: "pending",
+      time: "1 год тому"
+    },
+    {
+      id: "#1237",
+      customer: "Анна Мельник",
+      amount: "₴290",
+      status: "completed",
+      time: "2 год тому"
+    }
+  ];
 
-  if (loading) {
-    console.log('Dashboard: завантаження...');
-    return (
-      <DashboardLayout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2">Завантаження...</p>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const topProducts = [
+    { name: "Піца Маргарита", sales: 45, revenue: "₴2,250" },
+    { name: "Бургер Класичний", sales: 38, revenue: "₴1,900" },
+    { name: "Суші Рол", sales: 32, revenue: "₴1,600" },
+    { name: "Кава Американо", sales: 28, revenue: "₴840" }
+  ];
 
-  // Додаємо діагностику помилок
-  if (error) {
-    console.error('Dashboard: помилка отримання бізнесу:', error);
-    return (
-      <DashboardLayout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-lg text-red-600">Помилка завантаження: {error}</p>
-            <Button 
-              onClick={() => window.location.reload()} 
-              className="mt-4"
-            >
-              Спробувати знову
-            </Button>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "completed":
+        return <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100">Завершено</Badge>;
+      case "preparing":
+        return <Badge variant="secondary">Готується</Badge>;
+      case "pending":
+        return <Badge variant="outline">Очікує</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
 
-  // Якщо користувач не має бізнесу, показуємо форму створення
-  if (showCreateBusiness) {
-    return (
-      <DashboardLayout>
-        <div className="min-h-screen bg-gray-50 p-6">
-          <div className="max-w-2xl mx-auto">
-            <div className="text-center mb-8">
-              <Building className="h-16 w-16 text-blue-600 mx-auto mb-4" />
-              <h1 className="text-3xl font-bold text-gray-900 mb-4">
-                Ласкаво просимо до Berry POS!
-              </h1>
-              <p className="text-lg text-gray-600">
-                Для початку роботи створіть свій перший бізнес
-              </p>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Створити бізнес</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-600 mb-6">
-                  Створіть свій бізнес, щоб почати керувати меню, замовленнями та клієнтами.
-                </p>
-                
-                <Button 
-                  onClick={() => router.push('/create-business')}
-                  className="w-full"
-                  size="lg"
-                >
-                  <Plus className="h-5 w-5 mr-2" />
-                  Створити бізнес
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  // Якщо бізнес є, показуємо dashboard з аналітикою
   return (
-    <DashboardLayout>
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto">
-          {/* Заголовок та селектор періоду */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Панель управління</h1>
-                <p className="text-gray-600">
-                  Ласкаво просимо до {currentBusiness?.name}! Ось аналітика вашого бізнесу
-                </p>
+    <div className="space-y-8 animate-fade-in">
+      {/* Header */}
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground">
+          Огляд вашого бізнесу та ключові метрики
+        </p>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat, index) => (
+          <Card key={stat.title} className="animate-slide-in-from-top" style={{ animationDelay: `${index * 100}ms` }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                {stat.title}
+              </CardTitle>
+              <stat.icon className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stat.value}</div>
+              <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                {stat.trend === "up" ? (
+                  <ArrowUpRight className="h-3 w-3 text-green-600" />
+                ) : (
+                  <ArrowDownRight className="h-3 w-3 text-red-600" />
+                )}
+                <span className={stat.trend === "up" ? "text-green-600" : "text-red-600"}>
+                  {stat.change}
+                </span>
+                <span>{stat.description}</span>
               </div>
-              
-              <div className="flex items-center space-x-4">
-                {/* Селектор періоду */}
-                <Select value={period} onValueChange={(value: 'day' | 'week' | 'month') => setPeriod(value)}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="day">День</SelectItem>
-                    <SelectItem value="week">Тиждень</SelectItem>
-                    <SelectItem value="month">Місяць</SelectItem>
-                  </SelectContent>
-                </Select>
-                
-                {/* Кнопка налаштувань */}
-                <Button
-                  variant="outline"
-                  onClick={() => router.push('/settings')}
-                  className="flex items-center space-x-2"
-                >
-                  <Settings className="h-4 w-4" />
-                  <span>Налаштування</span>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        {/* Recent Orders */}
+        <Card className="col-span-4 animate-slide-in-from-left">
+          <CardHeader>
+            <CardTitle>Останні замовлення</CardTitle>
+            <CardDescription>
+              Останні 4 замовлення з системи
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {recentOrders.map((order) => (
+                <div key={order.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                      <Receipt className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{order.customer}</p>
+                      <p className="text-xs text-muted-foreground">{order.id}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <span className="text-sm font-medium">{order.amount}</span>
+                    {getStatusBadge(order.status)}
+                    <span className="text-xs text-muted-foreground">{order.time}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Link href="/orders">
+                <Button variant="outline" className="w-full">
+                  Переглянути всі замовлення
                 </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Top Products */}
+        <Card className="col-span-3 animate-slide-in-from-right">
+          <CardHeader>
+            <CardTitle>Топ продукти</CardTitle>
+            <CardDescription>
+              Найпопулярніші продукти цього місяця
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {topProducts.map((product, index) => (
+                <div key={product.name} className="flex items-center space-x-4">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-medium">
+                    {index + 1}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p className="text-sm font-medium leading-none">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {product.sales} продажів
+                    </p>
+                  </div>
+                  <div className="text-sm font-medium">{product.revenue}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Link href="/menu">
+                <Button variant="outline" className="w-full">
+                  Управляти меню
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Additional Metrics */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Revenue Chart Placeholder */}
+        <Card className="col-span-2 animate-slide-in-from-bottom">
+          <CardHeader>
+            <CardTitle>Доход за останні 7 днів</CardTitle>
+            <CardDescription>
+              Графік показує динаміку доходу
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[200px] flex items-center justify-center bg-muted/50 rounded-lg">
+              <div className="text-center space-y-2">
+                <Activity className="h-8 w-8 text-muted-foreground mx-auto" />
+                <p className="text-sm text-muted-foreground">Графік доходу</p>
+                <p className="text-xs text-muted-foreground">Тут буде відображатися графік</p>
               </div>
             </div>
-            
-            {/* Селектор бізнесів */}
-            {allBusinesses.length > 1 && (
-              <div className="mt-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Оберіть бізнес для аналітики:
-                </label>
-                <Select value={selectedBusinessId || ''} onValueChange={setSelectedBusinessId}>
-                  <SelectTrigger className="w-64">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {allBusinesses.map((biz) => (
-                      <SelectItem key={biz.id} value={biz.id}>
-                        {biz.name} ({biz.type})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          
-          {/* KPI картки */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Загальний дохід</CardTitle>
-                <DollarSign className="h-4 w-4 text-green-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">₴24,500</div>
-                <p className="text-xs text-green-600">+12% з минулого періоду</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Замовлення</CardTitle>
-                <ShoppingCart className="h-4 w-4 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">156</div>
-                <p className="text-xs text-blue-600">+8% з минулого періоду</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Клієнти</CardTitle>
-                <Users className="h-4 w-4 text-purple-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">89</div>
-                <p className="text-xs text-purple-600">+15% з минулого періоду</p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Середній чек</CardTitle>
-                <TrendingUp className="h-4 w-4 text-orange-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">₴157</div>
-                <p className="text-xs text-orange-600">+5% з минулого періоду</p>
-              </CardContent>
-            </Card>
-          </div>
-          
-          {/* Графіки */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Графік продажів */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Динаміка продажів</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={getChartData()}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey={period === 'day' ? 'time' : 'date'} />
-                    <YAxis />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="sales" stroke="#10B981" strokeWidth={2} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-            
-            {/* Графік замовлень */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Кількість замовлень</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={getChartData()}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey={period === 'day' ? 'time' : 'date'} />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="orders" fill="#10B981" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
-          
-          {/* Додаткові графіки */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Кругова діаграма категорій */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Продажі по категоріях</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={categoryData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {categoryData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-            
-            {/* Швидкі дії */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Швидкі дії</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <Button 
-                    onClick={() => router.push('/pos')}
-                    variant="outline"
-                    className="w-full justify-start"
-                  >
-                    <ArrowRight className="h-4 w-4 mr-2" />
-                    Відкрити POS
-                  </Button>
-                  <Button 
-                    onClick={() => router.push('/menu')}
-                    variant="outline"
-                    className="w-full justify-start"
-                  >
-                    <ArrowRight className="h-4 w-4 mr-2" />
-                    Управління меню
-                  </Button>
-                  <Button 
-                    onClick={() => router.push('/orders')}
-                    variant="outline"
-                    className="w-full justify-start"
-                  >
-                    <ArrowRight className="h-4 w-4 mr-2" />
-                    Замовлення
-                  </Button>
-                  <Button 
-                    onClick={() => router.push('/customers')}
-                    variant="outline"
-                    className="w-full justify-start"
-                  >
-                    <ArrowRight className="h-4 w-4 mr-2" />
-                    Клієнти
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
+
+        {/* Quick Actions */}
+        <Card className="animate-slide-in-from-bottom">
+          <CardHeader>
+            <CardTitle>Швидкі дії</CardTitle>
+            <CardDescription>
+              Часто використовувані функції
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Link href="/pos">
+              <Button className="w-full justify-start" size="sm">
+                <ShoppingCart className="mr-2 h-4 w-4" />
+                Новий заказ
+              </Button>
+            </Link>
+            <Link href="/menu/products">
+              <Button variant="outline" className="w-full justify-start" size="sm">
+                <Package className="mr-2 h-4 w-4" />
+                Додати продукт
+              </Button>
+            </Link>
+            <Link href="/customers">
+              <Button variant="outline" className="w-full justify-start" size="sm">
+                <Users className="mr-2 h-4 w-4" />
+                Новий клієнт
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
-    </DashboardLayout>
+
+      {/* Performance Overview */}
+      <Card className="animate-slide-in-from-bottom">
+        <CardHeader>
+          <CardTitle>Продуктивність системи</CardTitle>
+          <CardDescription>
+            Ключові показники ефективності
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span>Середній час обслуговування</span>
+                <span className="font-medium">3.2 хв</span>
+              </div>
+              <Progress value={75} className="h-2" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span>Задоволеність клієнтів</span>
+                <span className="font-medium">4.8/5</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`h-4 w-4 ${
+                      i < 4 ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span>Відкритість закладу</span>
+                <span className="font-medium">12 год</span>
+              </div>
+              <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                <span>9:00 - 21:00</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
